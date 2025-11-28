@@ -1,0 +1,221 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vision-pdf"
+version = "0.1.0"
+description = "Convert PDF documents to well-formatted markdown using vision language models"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "VisionPDF Team", email = "contact@visionpdf.com"}
+]
+maintainers = [
+    {name = "VisionPDF Team", email = "contact@visionpdf.com"}
+]
+keywords = [
+    "pdf",
+    "markdown",
+    "vision-language-model",
+    "document-processing",
+    "ocr",
+    "llm",
+    "ollama",
+    "llama-cpp"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+requires-python = ">=3.8"
+dependencies = [
+    # Core dependencies
+    "pymupdf>=1.23.0",          # PDF processing and rendering
+    "pdfplumber>=0.10.0",       # PDF analysis and table extraction
+    "pillow>=10.0.0",           # Image processing
+    "pydantic>=2.0.0",          # Data validation and settings
+    "pyyaml>=6.0",              # Configuration file parsing
+    "aiohttp>=3.8.0",           # HTTP client for API backends
+    "asyncio-throttle>=1.0.0",  # Rate limiting for API calls
+
+    # Optional dependencies (marked as optional below)
+]
+
+[project.optional-dependencies]
+# OCR dependencies
+ocr = [
+    "easyocr>=1.7.0",
+    "tesseract>=5.3.0"
+]
+
+# Vision model backends
+ollama = [
+    "ollama>=0.1.7"  # Official Ollama Python client
+]
+
+llama-cpp = [
+    "llama-cpp-python>=0.2.0"
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0"
+]
+
+# Documentation dependencies
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.2.0",
+    "sphinx-autodoc-typehints>=1.23.0",
+    "myst-parser>=1.0.0"
+]
+
+# API server dependencies
+api = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0"
+]
+
+# All optional dependencies
+all = [
+    "vision-pdf[ocr,ollama,llama-cpp,api]"
+]
+
+# All dependencies for development
+dev-all = [
+    "vision-pdf[all,dev,docs]"
+]
+
+[project.urls]
+Homepage = "https://github.com/visionpdf/vision-pdf"
+Documentation = "https://vision-pdf.readthedocs.io/"
+Repository = "https://github.com/visionpdf/vision-pdf.git"
+"Bug Tracker" = "https://github.com/visionpdf/vision-pdf/issues"
+Changelog = "https://github.com/visionpdf/vision-pdf/blob/main/CHANGELOG.md"
+
+[project.scripts]
+vision-pdf = "vision_pdf.cli.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vision_pdf*"]
+exclude = ["tests*", "docs*"]
+
+[tool.setuptools.package-data]
+vision_pdf = [
+    "config/*.yaml",
+    "config/*.yml",
+    "api/static/*",
+    "api/templates/*"
+]
+
+# Black code formatting
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort import sorting
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["vision_pdf"]
+known_third_party = ["aiohttp", "pytest", "pydantic", "pymupdf", "pdfplumber"]
+
+# MyPy type checking
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fitz.*",  # PyMuPDF
+    "pdfplumber.*",
+    "easyocr.*",
+    "tesseract.*",
+    "ollama.*",
+    "llama_cpp.*"
+]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests"
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["vision_pdf"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "setup.py",
+    "*/docs/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:"
+]

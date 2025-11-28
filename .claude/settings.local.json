@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "WebSearch",
+      "mcp__duckduckgo__web-search"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

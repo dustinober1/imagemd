@@ -1,0 +1,79 @@
+# Default configuration for VisionPDF
+# This file contains default settings that can be overridden by user configuration
+
+# Document processing settings
+processing:
+  mode: hybrid  # vision_only, hybrid, text_only
+  parallel_processing: true
+  max_workers: 4
+  batch_size: 5
+  dpi: 300
+  preserve_tables: true
+  preserve_math: true
+  preserve_code: true
+  preserve_images: false
+
+# Backend configurations
+backends:
+  ollama:
+    backend_type: ollama
+    enabled: true
+    config:
+      base_url: "http://localhost:11434"
+      model: "llava"
+      timeout: 60
+    timeout: 60.0
+    max_retries: 3
+    retry_delay: 1.0
+
+  llama_cpp:
+    backend_type: llama_cpp
+    enabled: true
+    config:
+      base_url: "http://localhost:8080"
+      model: "llava"
+      timeout: 60
+    timeout: 60.0
+    max_retries: 3
+    retry_delay: 1.0
+
+  custom_api:
+    backend_type: custom_api
+    enabled: false
+    config:
+      url: "https://api.example.com/v1/vision"
+      api_key: null
+      model: "custom-vision-model"
+      headers: {}
+    timeout: 60.0
+    max_retries: 3
+    retry_delay: 1.0
+
+# Default backend to use
+default_backend: ollama
+
+# OCR settings
+ocr:
+  engine: easyocr  # easyocr, tesseract
+  languages: ["en"]
+  confidence_threshold: 0.5
+  enabled: true
+
+# Cache settings
+cache:
+  type: memory  # memory, file, redis, disabled
+  directory: null  # Required for file-based caching
+  max_size: 1000
+  ttl: 3600  # seconds
+
+# Logging settings
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Log file path (null for stdout)
+  max_size: 10485760  # 10MB
+  backup_count: 5
+
+# General settings
+temp_directory: "/tmp/vision_pdf"
+max_file_size: 52428800  # 50MB
