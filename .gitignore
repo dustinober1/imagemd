@@ -1,4 +1,157 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# PDF files
 *.pdf
+
+# Test files and outputs
+test_*.py
+*_test.py
+investigate_*.py
+deep_*.py
+quick_*.py
+enhanced_*.py
+analysis_*.py
+debug_*.py
+
+# Generated images and previews
+*_preview.png
+*_page_*.png
+page_*.png
+screenshot_*.png
+
+# Generated markdown and result files
+*_formatted.md
+*_vision_formatted.md
+*_structured_formatted.md
+*_complete_solution.md
+*_analysis.md
+*_results.md
+
+# Generated data files
+*.json
+results_*.json
+comparison_*.json
+investigation_*.json
+table_*.json
+*_data.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Project specific
 plans/
 CLAUDE.md
 export/
+test_files/
+test_files_*/
+test_files_backup/
+
+# OCR and image processing
+ocr_*.png
+ocr_*.jpg
+extracted_images/
+image_cache/
+
+# Model and AI files
+model_cache/
+*.model
+*.bin
+*.pkl
+checkpoint_*/
+
+# Documentation build
+docs/_build/
+site/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
