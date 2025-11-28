@@ -18,6 +18,7 @@ from ..backends.base import VLMBackend
 from ..pdf.renderer import PDFRenderer
 from ..pdf.analyzer import PDFAnalyzer
 from ..pdf.extractor import PDFExtractor
+from ..ocr.base import OCRFallbackManager, OCRConfig, OCRPostProcessor
 from ..utils.logging_config import get_logger
 from ..utils.exceptions import (
     VisionPDFError,
@@ -73,6 +74,9 @@ class VisionPDF:
         # Initialize components
         self._init_components()
 
+        # Initialize OCR fallback manager
+        self._init_ocr_fallback()
+
         # VLM backend (lazy initialization)
         self._backend: Optional[VLMBackend] = None
 
@@ -83,6 +87,35 @@ class VisionPDF:
         self.renderer = PDFRenderer(self.config)
         self.analyzer = PDFAnalyzer(self.config)
         self.extractor = PDFExtractor(self.config)
+
+    def _init_ocr_fallback(self) -> None:
+        """Initialize OCR fallback manager if enabled."""
+        if self.config.processing.ocr_fallback_enabled:
+            try:
+                # Get OCR configuration
+                ocr_config_dict = self.config.processing.ocr_config or {}
+                ocr_config = OCRConfig(
+                    engine=ocr_config_dict.get('engine', 'tesseract'),
+                    languages=ocr_config_dict.get('languages', ['eng']),
+                    confidence_threshold=ocr_config_dict.get('confidence_threshold', 0.6),
+                    preprocessing=ocr_config_dict.get('preprocessing', True),
+                    deskew=ocr_config_dict.get('deskew', True),
+                    enhancement=ocr_config_dict.get('enhancement', True)
+                )
+
+                # Initialize OCR manager
+                self.ocr_manager = OCRFallbackManager(ocr_config)
+                self.ocr_post_processor = OCRPostProcessor(ocr_config)
+
+                logger.info("OCR fallback system initialized")
+
+            except Exception as e:
+                logger.warning(f"Failed to initialize OCR fallback: {e}")
+                self.ocr_manager = None
+                self.ocr_post_processor = None
+        else:
+            self.ocr_manager = None
+            self.ocr_post_processor = None
 
     async def _get_backend(self) -> VLMBackend:
         """Get or initialize the VLM backend."""
@@ -257,7 +290,7 @@ class VisionPDF:
 
     async def _process_page(self, page: Page, backend: VLMBackend) -> str:
         """
-        Process a single page using the VLM backend.
+        Process a single page using the VLM backend with OCR fallback.
 
         Args:
             page: Page object to process
@@ -277,15 +310,26 @@ class VisionPDF:
             # Handle errors in response
             if response.error_message:
                 logger.warning(f"VLM processing warning: {response.error_message}")
-                # Fall back to text extraction
-                return self._fallback_text_extraction(page)
+                # Fall back to OCR if available
+                if self._should_use_ocr_fallback(page):
+                    return await self._ocr_fallback_processing(page)
+                else:
+                    return self._fallback_text_extraction(page)
+
+            # Check if OCR fallback should be used for low confidence results
+            if self.ocr_manager and self.ocr_manager.should_use_ocr_fallback(page):
+                logger.info(f"Using OCR fallback for page {page.page_number + 1} due to low VLM confidence")
+                return await self._ocr_fallback_processing(page)
 
             return response.markdown
 
         except Exception as e:
             logger.error(f"VLM processing failed for page {page.page_number}: {e}")
-            # Fall back to text extraction
-            return self._fallback_text_extraction(page)
+            # Fall back to OCR if available
+            if self._should_use_ocr_fallback(page):
+                return await self._ocr_fallback_processing(page)
+            else:
+                return self._fallback_text_extraction(page)
 
     def _create_processing_request(self, page: Page) -> "ProcessingRequest":
         """Create a processing request for a page."""
@@ -330,6 +374,63 @@ class VisionPDF:
             base_prompt += " Identify and format code blocks with appropriate syntax highlighting."
 
         return base_prompt
+
+    def _should_use_ocr_fallback(self, page: Page) -> bool:
+        """
+        Determine if OCR fallback should be used for this page.
+
+        Args:
+            page: Page object to evaluate
+
+        Returns:
+            True if OCR fallback should be used
+        """
+        if not self.ocr_manager:
+            return False
+
+        return self.ocr_manager.should_use_ocr_fallback(page)
+
+    async def _ocr_fallback_processing(self, page: Page) -> str:
+        """
+        Process page using OCR fallback.
+
+        Args:
+            page: Page object to process
+
+        Returns:
+            Markdown content from OCR processing
+        """
+        try:
+            logger.info(f"Processing page {page.page_number + 1} with OCR fallback")
+
+            # Process page with OCR
+            processed_page = self.ocr_manager.process_page_with_ocr(page)
+
+            # Post-process OCR results
+            if self.ocr_post_processor and processed_page.elements:
+                processed_page.elements = self.ocr_post_processor.process_page_elements(processed_page.elements)
+
+            # Generate markdown from OCR results
+            from ..markdown.generator import MarkdownGenerator
+            generator = MarkdownGenerator(self.config)
+
+            # Create a temporary document with just this page
+            from .document import Document
+            temp_doc = Document(
+                file_path=Path("temp"),
+                title="OCR Processed",
+                pages=[processed_page]
+            )
+
+            # Generate markdown for this page only
+            page_markdown = generator._generate_page_content(processed_page, self.processing_mode)
+
+            return page_markdown
+
+        except Exception as e:
+            logger.error(f"OCR fallback failed for page {page.page_number}: {e}")
+            # Final fallback to basic text extraction
+            return self._fallback_text_extraction(page)
 
     def _fallback_text_extraction(self, page: Page) -> str:
         """

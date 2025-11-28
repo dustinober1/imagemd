@@ -1,0 +1,613 @@
+"""
+Advanced table detection and formatting for VisionPDF.
+
+This module provides sophisticated table detection, structure analysis,
+and markdown formatting capabilities for preserving table layouts.
+"""
+
+import re
+from typing import List, Dict, Any, Optional, Tuple
+import logging
+from dataclasses import dataclass
+
+from ...core.document import ContentElement, ContentType, BoundingBox
+from ...utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class TableCell:
+    """Represents a cell in a table."""
+    text: str
+    row: int
+    col: int
+    rowspan: int = 1
+    colspan: int = 1
+    is_header: bool = False
+    confidence: float = 0.0
+    bounding_box: Optional[BoundingBox] = None
+
+    def __post_init__(self):
+        """Initialize cell properties."""
+        if self.row < 0 or self.col < 0:
+            raise ValueError("Row and column must be non-negative")
+        if self.rowspan < 1 or self.colspan < 1:
+            raise ValueError("Rowspan and colspan must be at least 1")
+
+
+@dataclass
+class TableStructure:
+    """Represents the complete structure of a detected table."""
+    rows: int
+    cols: int
+    cells: List[TableCell]
+    confidence: float = 0.0
+    bounding_box: Optional[BoundingBox] = None
+    metadata: Dict[str, Any] = None
+
+    def __post_init__(self):
+        """Initialize table structure."""
+        if self.metadata is None:
+            self.metadata = {}
+
+    def get_cell(self, row: int, col: int) -> Optional[TableCell]:
+        """Get cell at specific position."""
+        for cell in self.cells:
+            if (cell.row <= row < cell.row + cell.rowspan and
+                cell.col <= col < cell.col + cell.colspan):
+                return cell
+        return None
+
+    def get_row(self, row_idx: int) -> List[TableCell]:
+        """Get all cells in a specific row."""
+        return [cell for cell in self.cells if cell.row == row_idx]
+
+    def get_column(self, col_idx: int) -> List[TableCell]:
+        """Get all cells in a specific column."""
+        return [cell for cell in self.cells if cell.col == col_idx]
+
+    def get_header_row(self) -> Optional[List[TableCell]]:
+        """Get the header row if it exists."""
+        # Check first row for header-like content
+        first_row = self.get_row(0)
+        if first_row and any(cell.is_header for cell in first_row):
+            return first_row
+
+        # Check for common header patterns
+        if first_row and self._is_likely_header_row(first_row):
+            # Mark as header cells
+            for cell in first_row:
+                cell.is_header = True
+            return first_row
+
+        return None
+
+    def _is_likely_header_row(self, row: List[TableCell]) -> bool:
+        """Determine if a row is likely a header row."""
+        if not row:
+            return False
+
+        # Check for common header indicators
+        header_indicators = 0
+        total_cells = len(row)
+
+        for cell in row:
+            text = cell.text.strip().upper()
+
+            # Check for common header keywords
+            if any(keyword in text for keyword in ['NAME', 'TYPE', 'SIZE', 'DATE', 'ID', 'STATUS']):
+                header_indicators += 1
+
+            # Check for formatting (bold, center-aligned)
+            if len(text) < 50 and text == text.strip():
+                header_indicators += 0.5
+
+        return (header_indicators / total_cells) > 0.5
+
+
+class AdvancedTableDetector:
+    """Advanced table detection and structure analysis."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize table detector.
+
+        Args:
+            config: Configuration dictionary
+        """
+        self.config = config or {}
+        self.min_cells = self.config.get('min_table_cells', 4)
+        self.max_rows = self.config.get('max_table_rows', 50)
+        self.max_cols = self.config.get('max_table_cols', 20)
+        self.confidence_threshold = self.config.get('confidence_threshold', 0.6)
+
+    def detect_table_from_text(self, text: str) -> Optional[TableStructure]:
+        """
+        Detect table structure from extracted text.
+
+        Args:
+            text: Text content that may contain a table
+
+        Returns:
+            Table structure or None if no table detected
+        """
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        if len(lines) < 2:
+            return None
+
+        # Try different table detection methods
+        table_structure = (
+            self._detect_delimiter_table(lines) or
+            self._detect_space_aligned_table(lines) or
+            self._detect_grid_table(lines)
+        )
+
+        if table_structure and self._validate_table_structure(table_structure):
+            return table_structure
+
+        return None
+
+    def detect_table_from_vision_content(self, content: str) -> Optional[TableStructure]:
+        """
+        Detect table from VLM-generated content.
+
+        Args:
+            content: Content generated by vision language model
+
+        Returns:
+            Table structure or None
+        """
+        # Look for markdown table patterns
+        if self._contains_markdown_table(content):
+            return self._parse_markdown_table(content)
+
+        # Look for table-like structures in the content
+        table_patterns = [
+            r'\|\s*[^|]+\s*\|.*?\|',  # Table rows with pipes
+            r'(\s+\w+\s+){3,}',      # Space-separated columns
+        ]
+
+        for pattern in table_patterns:
+            matches = re.findall(pattern, content, re.MULTILINE)
+            if len(matches) >= 3:  # At least 3 lines for a table
+                return self._extract_table_from_matches(matches, content)
+
+        return None
+
+    def _detect_delimiter_table(self, lines: List[str]) -> Optional[TableStructure]:
+        """Detect tables with explicit delimiters (commas, tabs, etc)."""
+        delimiters = [',', '\t', ';', '|']
+
+        for delimiter in delimiters:
+            # Check if most lines have the same number of delimiters
+            delimiter_counts = [line.count(delimiter) for line in lines]
+            if not delimiter_counts:
+                continue
+
+            # Use the most common delimiter count
+            most_common_count = max(set(delimiter_counts), key=delimiter_counts.count)
+            matching_lines = [count for count in delimiter_counts if count == most_common_count]
+
+            if len(matching_lines) >= len(lines) * 0.7:  # 70% of lines match
+                return self._parse_delimited_table(lines, delimiter, most_common_count + 1)
+
+        return None
+
+    def _detect_space_aligned_table(self, lines: List[str]) -> Optional[TableStructure]:
+        """Detect tables aligned with spaces."""
+        # Find column positions based on whitespace patterns
+        column_positions = self._find_column_positions(lines)
+        if len(column_positions) < 3:  # At least 3 columns
+            return None
+
+        return self._parse_space_aligned_table(lines, column_positions)
+
+    def _detect_grid_table(self, lines: List[str]) -> Optional[TableStructure]:
+        """Detect tables with grid-like characters (+, -, |)."""
+        grid_pattern = r'^[\+\-\|]+$'
+        grid_lines = [i for i, line in enumerate(lines) if re.match(grid_pattern, line)]
+
+        if len(grid_lines) >= 2:
+            # Found grid separators, treat surrounding text as table
+            return self._parse_grid_table(lines, grid_lines)
+
+        return None
+
+    def _parse_delimited_table(self, lines: List[str], delimiter: str, expected_cols: int) -> TableStructure:
+        """Parse a table with explicit delimiters."""
+        cells = []
+
+        for row_idx, line in enumerate(lines):
+            # Split by delimiter and clean up
+            raw_cells = [cell.strip() for cell in line.split(delimiter)]
+
+            # Adjust cell count if necessary
+            while len(raw_cells) < expected_cols:
+                raw_cells.append('')
+
+            raw_cells = raw_cells[:expected_cols]  # Truncate if too many
+
+            for col_idx, cell_text in enumerate(raw_cells):
+                cell = TableCell(
+                    text=cell_text,
+                    row=row_idx,
+                    col=col_idx,
+                    confidence=0.8,
+                    is_header=(row_idx == 0)
+                )
+                cells.append(cell)
+
+        return TableStructure(
+            rows=len(lines),
+            cols=expected_cols,
+            cells=cells,
+            confidence=0.75
+        )
+
+    def _parse_space_aligned_table(self, lines: List[str], column_positions: List[int]) -> TableStructure:
+        """Parse a space-aligned table."""
+        cells = []
+
+        for row_idx, line in enumerate(lines):
+            for col_idx, (start, end) in enumerate(zip(column_positions[:-1], column_positions[1:])):
+                cell_text = line[start:end].strip()
+                if cell_text:
+                    cell = TableCell(
+                        text=cell_text,
+                        row=row_idx,
+                        col=col_idx,
+                        confidence=0.7,
+                        is_header=(row_idx == 0)
+                    )
+                    cells.append(cell)
+
+        # Determine actual column count
+        max_col = max((cell.col for cell in cells), default=0) + 1
+
+        return TableStructure(
+            rows=len(lines),
+            cols=max_col,
+            cells=cells,
+            confidence=0.7
+        )
+
+    def _parse_grid_table(self, lines: List[str], grid_line_indices: List[int]) -> TableStructure:
+        """Parse a grid-style table."""
+        # This is a simplified implementation
+        # In practice, you'd want more sophisticated grid parsing
+        cells = []
+        current_row = 0
+
+        for i, line in enumerate(lines):
+            if i in grid_line_indices:
+                continue
+
+            # Extract content between grid markers
+            content_parts = re.split(r'\+', line)
+            content_parts = [part.strip() for part in content_parts if part.strip()]
+
+            for col_idx, content in enumerate(content_parts):
+                if content:
+                    cell = TableCell(
+                        text=content,
+                        row=current_row,
+                        col=col_idx,
+                        confidence=0.85,
+                        is_header=(current_row == 0)
+                    )
+                    cells.append(cell)
+
+            current_row += 1
+
+        return TableStructure(
+            rows=current_row,
+            cols=max((cell.col for cell in cells), default=0) + 1,
+            cells=cells,
+            confidence=0.8
+        )
+
+    def _find_column_positions(self, lines: List[str]) -> List[int]:
+        """Find column positions based on whitespace patterns."""
+        if not lines:
+            return []
+
+        # Collect all word positions
+        word_positions = []
+        for line in lines:
+            for match in re.finditer(r'\S+', line):
+                word_positions.append(match.start())
+
+        if not word_positions:
+            return []
+
+        # Cluster positions to find column boundaries
+        word_positions.sort()
+        clusters = []
+        current_cluster = [word_positions[0]]
+
+        for pos in word_positions[1:]:
+            if pos - current_cluster[-1] < 10:  # Within same column
+                current_cluster.append(pos)
+            else:
+                clusters.append(min(current_cluster))
+                current_cluster = [pos]
+
+        clusters.append(min(current_cluster))
+
+        return clusters + [999]  # End marker
+
+    def _contains_markdown_table(self, content: str) -> bool:
+        """Check if content contains a markdown table."""
+        lines = content.split('\n')
+        pipe_lines = [line for line in lines if '|' in line]
+
+        return len(pipe_lines) >= 3
+
+    def _parse_markdown_table(self, content: str) -> TableStructure:
+        """Parse a markdown table."""
+        lines = [line for line in content.split('\n') if '|' in line]
+
+        # Skip separator lines (containing only |, -, and spaces)
+        content_lines = []
+        for line in lines:
+            if not re.match(r'^[\s\|\-]+$', line):
+                content_lines.append(line)
+
+        cells = []
+        for row_idx, line in enumerate(content_lines):
+            # Split by | and clean up
+            parts = [part.strip() for part in line.split('|')]
+            # Remove empty parts at beginning and end
+            if parts and parts[0] == '':
+                parts = parts[1:]
+            if parts and parts[-1] == '':
+                parts = parts[:-1]
+
+            for col_idx, cell_text in enumerate(parts):
+                cell = TableCell(
+                    text=cell_text,
+                    row=row_idx,
+                    col=col_idx,
+                    confidence=0.9,
+                    is_header=(row_idx == 0)
+                )
+                cells.append(cell)
+
+        cols = max((cell.col for cell in cells), default=0) + 1
+
+        return TableStructure(
+            rows=len(content_lines),
+            cols=cols,
+            cells=cells,
+            confidence=0.9
+        )
+
+    def _extract_table_from_matches(self, matches: List[str], content: str) -> Optional[TableStructure]:
+        """Extract table structure from regex matches."""
+        # This is a simplified implementation
+        # In practice, you'd want more sophisticated extraction
+        lines = [match.strip() for match in matches]
+        return self._detect_delimiter_table(lines)
+
+    def _validate_table_structure(self, table: TableStructure) -> bool:
+        """Validate that the detected table structure is reasonable."""
+        if table.rows < 2 or table.cols < 2:
+            return False
+
+        if len(table.cells) < self.min_cells:
+            return False
+
+        if table.rows > self.max_rows or table.cols > self.max_cols:
+            return False
+
+        if table.confidence < self.confidence_threshold:
+            return False
+
+        return True
+
+
+class TableFormatter:
+    """Format detected table structures into markdown."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize table formatter.
+
+        Args:
+            config: Configuration dictionary
+        """
+        self.config = config or {}
+        self.max_column_width = self.config.get('max_column_width', 50)
+        self.min_column_width = self.config.get('min_column_width', 10)
+        self.preserve_alignment = self.config.get('preserve_alignment', True)
+
+    def format_table(self, table: TableStructure) -> str:
+        """
+        Format table structure as markdown.
+
+        Args:
+            table: Table structure to format
+
+        Returns:
+            Formatted markdown table
+        """
+        if not table.cells:
+            return ""
+
+        # Build the table matrix
+        table_matrix = self._build_table_matrix(table)
+
+        # Calculate column widths
+        col_widths = self._calculate_column_widths(table_matrix)
+
+        # Format the table
+        markdown_lines = []
+
+        # Format header row
+        header_row = self._format_row(table_matrix[0], col_widths, is_header=True)
+        markdown_lines.append(header_row)
+
+        # Add separator
+        separator = self._format_separator(col_widths)
+        markdown_lines.append(separator)
+
+        # Format data rows
+        for row in table_matrix[1:]:
+            formatted_row = self._format_row(row, col_widths, is_header=False)
+            markdown_lines.append(formatted_row)
+
+        return '\n'.join(markdown_lines)
+
+    def _build_table_matrix(self, table: TableStructure) -> List[List[str]]:
+        """Build a 2D matrix representing the table."""
+        matrix = [['' for _ in range(table.cols)] for _ in range(table.rows)]
+
+        for cell in table.cells:
+            for r in range(cell.row, min(cell.row + cell.rowspan, table.rows)):
+                for c in range(cell.col, min(cell.col + cell.colspan, table.cols)):
+                    matrix[r][c] = cell.text
+
+        return matrix
+
+    def _calculate_column_widths(self, table_matrix: List[List[str]]) -> List[int]:
+        """Calculate optimal column widths."""
+        if not table_matrix:
+            return []
+
+        cols = len(table_matrix[0])
+        col_widths = [self.min_column_width] * cols
+
+        # Find the maximum width needed for each column
+        for row in table_matrix:
+            for col, cell in enumerate(row):
+                content_width = len(cell)
+                if content_width > col_widths[col]:
+                    col_widths[col] = min(content_width, self.max_column_width)
+
+        return col_widths
+
+    def _format_row(self, row: List[str], col_widths: List[int], is_header: bool) -> str:
+        """Format a single table row."""
+        cells = []
+        for col_idx, (cell_text, width) in enumerate(zip(row, col_widths)):
+            # Truncate if necessary
+            if len(cell_text) > width:
+                cell_text = cell_text[:width-3] + '...'
+
+            # Apply formatting
+            if is_header:
+                formatted_cell = f" {cell_text.center(width)} "
+            else:
+                # Try to preserve original alignment
+                aligned_cell = self._align_cell(cell_text, width)
+                formatted_cell = f" {aligned_cell} "
+
+            cells.append(formatted_cell)
+
+        return '|' + '|'.join(cells) + '|'
+
+    def _format_separator(self, col_widths: List[int]) -> str:
+        """Format table separator row."""
+        separators = []
+        for width in col_widths:
+            separator = '-' * (width + 2)
+            separators.append(separator)
+
+        return '|' + '|'.join(separators) + '|'
+
+    def _align_cell(self, cell_text: str, width: int) -> str:
+        """Align cell content based on content type."""
+        if not self.preserve_alignment:
+            return cell_text.ljust(width)
+
+        # Try to detect alignment
+        text_stripped = cell_text.strip()
+
+        # Right-align numbers
+        if text_stripped.replace('.', '', 1).isdigit():
+            return text_stripped.rjust(width)
+
+        # Center-align short headers or single words
+        if len(text_stripped) < width // 2 and ' ' not in text_stripped:
+            return text_stripped.center(width)
+
+        # Default to left alignment
+        return text_stripped.ljust(width)
+
+
+def format_table_element(element: ContentElement) -> str:
+    """
+    Format a table content element into markdown.
+
+    Args:
+        element: Table content element
+
+    Returns:
+        Formatted markdown table
+    """
+    detector = AdvancedTableDetector()
+    formatter = TableFormatter()
+
+    # Detect table structure from the element text
+    table_structure = detector.detect_table_from_text(element.text)
+
+    if table_structure:
+        return formatter.format_table(table_structure)
+    else:
+        # Fallback to basic formatting
+        return f"\n{element.text}\n"
+
+
+def detect_and_format_tables(content: str) -> str:
+    """
+    Detect and format tables in content.
+
+    Args:
+        content: Content that may contain tables
+
+    Returns:
+        Content with tables formatted as markdown
+    """
+    detector = AdvancedTableDetector()
+    formatter = TableFormatter()
+
+    # Split content into lines
+    lines = content.split('\n')
+    formatted_lines = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Try to detect if current line starts a table
+        table_lines = [line]
+        j = i + 1
+
+        # Look for more table lines
+        while j < len(lines) and j < i + 20:  # Max 20 lines for a table
+            next_line = lines[j]
+            if (('|' in next_line) or
+                (',' in next_line and next_line.count(',') >= 2) or
+                ('\t' in next_line and next_line.count('\t') >= 2)):
+                table_lines.append(next_line)
+                j += 1
+            else:
+                break
+
+        # If we found a potential table (3+ lines)
+        if len(table_lines) >= 3:
+            table_text = '\n'.join(table_lines)
+            table_structure = detector.detect_table_from_vision_content(table_text)
+
+            if table_structure:
+                formatted_table = formatter.format_table(table_structure)
+                formatted_lines.append(formatted_table)
+                i = j  # Skip the lines we processed
+                continue
+
+        # No table detected, keep original line
+        formatted_lines.append(line)
+        i += 1
+
+    return '\n'.join(formatted_lines)

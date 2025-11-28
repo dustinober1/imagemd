@@ -71,6 +71,11 @@ class ProcessingConfig(BaseModel):
     preserve_code: bool = Field(default=True)
     preserve_images: bool = Field(default=False)
 
+    # OCR fallback configuration
+    ocr_fallback_enabled: bool = Field(default=True, description="Enable OCR fallback for failed VLM processing")
+    ocr_fallback_threshold: float = Field(default=0.5, ge=0.0, le=1.0, description="Confidence threshold for OCR fallback")
+    ocr_config: Optional[Dict[str, Any]] = Field(default=None, description="OCR engine configuration")
+
     @validator('dpi')
     def validate_dpi(cls, v):
         """Validate DPI range."""

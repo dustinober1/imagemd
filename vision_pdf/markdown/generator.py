@@ -36,10 +36,16 @@ class MarkdownGenerator:
 
     def _init_formatters(self) -> None:
         """Initialize specialized formatters for different content types."""
-        # These will be implemented when formatters are created
-        self.table_formatter = None
-        self.math_formatter = None
-        self.code_formatter = None
+        from .formatters.tables import format_table_element, detect_and_format_tables
+        from .formatters.math import format_math_element, detect_and_format_math
+        from .formatters.code import detect_and_format_code
+
+        # Import formatter functions
+        self.format_table_element = format_table_element
+        self.detect_and_format_tables = detect_and_format_tables
+        self.format_math_element = format_math_element
+        self.detect_and_format_math = detect_and_format_math
+        self.detect_and_format_code = detect_and_format_code
 
     def generate_markdown(
         self,
@@ -228,9 +234,11 @@ class MarkdownGenerator:
         Returns:
             Formatted table markdown
         """
-        # For now, return the raw table text
-        # TODO: Implement proper table formatting in table formatter
-        return f"## Table\n\n{element.text}"
+        try:
+            return self.format_table_element(element)
+        except Exception as e:
+            logger.warning(f"Failed to format table: {e}")
+            return f"## Table\n\n{element.text}"
 
     def _format_mathematical(self, element: ContentElement) -> str:
         """
@@ -242,9 +250,12 @@ class MarkdownGenerator:
         Returns:
             Formatted mathematical expression in LaTeX
         """
-        # For now, wrap in LaTeX math mode
-        # TODO: Implement proper math formatting in math formatter
-        return f"\\[ {element.text} \\]"
+        try:
+            return self.format_math_element(element)
+        except Exception as e:
+            logger.warning(f"Failed to format math: {e}")
+            # Fallback to basic LaTeX formatting
+            return f"\\[ {element.text} \\]"
 
     def _format_code(self, element: ContentElement) -> str:
         """
@@ -256,9 +267,22 @@ class MarkdownGenerator:
         Returns:
             Formatted code block with syntax highlighting
         """
-        # For now, use generic code block
-        # TODO: Implement proper code formatting in code formatter
-        return f"```\n{element.text}\n```"
+        try:
+            from .formatters.code import format_code_block
+            # Create a temporary code block for formatting
+            from .formatters.code import CodeBlock, CodeLanguage
+            code_block = CodeBlock(
+                lines=element.text.split('\n'),
+                language=CodeLanguage.UNKNOWN,
+                confidence=0.7,
+                start_line=0,
+                end_line=len(element.text.split('\n')) - 1
+            )
+            return format_code_block(code_block)
+        except Exception as e:
+            logger.warning(f"Failed to format code: {e}")
+            # Fallback to generic code block
+            return f"```\n{element.text}\n```"
 
     def _format_text(self, element: ContentElement) -> str:
         """
@@ -295,6 +319,19 @@ class MarkdownGenerator:
         Returns:
             Improved markdown content
         """
+        # Apply advanced formatting
+        try:
+            # Format any remaining tables
+            markdown = self.detect_and_format_tables(markdown)
+
+            # Format mathematical expressions
+            markdown = self.detect_and_format_math(markdown)
+
+            # Format code blocks
+            markdown = self.detect_and_format_code(markdown)
+        except Exception as e:
+            logger.warning(f"Advanced formatting failed: {e}")
+
         # Remove excessive blank lines
         markdown = self._cleanup_blank_lines(markdown)
 
