@@ -58,14 +58,31 @@ class VisionPDF:
         """
         # Initialize configuration
         if config is None:
-            config = VisionPDFConfig()
+            # We must explicitly pass backends={} or None to trigger the default factory/validator
+            # However, pydantic v2 validators behave differently on defaults.
+            # To ensure backends are populated, we can initialize with empty dict if the default_factory doesn't trigger validator.
+            # But checking previous attempt, it seems VisionPDFConfig() results in empty backends.
+            # Let's force populate if empty.
+            config = VisionPDFConfig(backends={})
             # Apply any additional configuration
             config.default_backend = backend_type
             config.processing.mode = processing_mode
 
             # Apply backend configuration if provided
             if backend_config:
-                config.backends[backend_type.value].config.update(backend_config)
+                if backend_type.value in config.backends:
+                    config.backends[backend_type.value].config.update(backend_config)
+                else:
+                    logger.warning(
+                        f"Backend {backend_type.value} not found in configuration. "
+                        "Creating temporary configuration with provided settings."
+                    )
+                    from ..config.settings import BackendConfig
+                    config.backends[backend_type.value] = BackendConfig(
+                        backend_type=backend_type,
+                        enabled=True,
+                        config=backend_config
+                    )
 
         self.config = config
         self.backend_type = backend_type

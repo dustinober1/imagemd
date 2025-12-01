@@ -72,6 +72,7 @@ class Page:
     image_path: Optional[pathlib.Path] = None
     elements: List[ContentElement] = field(default_factory=list)
     raw_text: Optional[str] = None
+    processing_method: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
