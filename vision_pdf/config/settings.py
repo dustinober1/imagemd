@@ -10,7 +10,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 from enum import Enum
 
 from ..backends.base import BackendType, ProcessingMode
@@ -91,12 +91,12 @@ class CacheConfig(BaseModel):
     max_size: int = Field(default=1000, ge=0, description="Maximum number of cached items")
     ttl: int = Field(default=3600, ge=0, description="Cache time-to-live in seconds")
 
-    @validator('directory')
-    def validate_cache_directory(cls, v, values):
+    @model_validator(mode='after')
+    def validate_cache_directory(self):
         """Validate cache directory when file-based caching is used."""
-        if values.get('type') == CacheType.FILE and not v:
+        if self.type == CacheType.FILE and not self.directory:
             raise ValueError("Cache directory must be specified for file-based caching")
-        return v
+        return self
 
 
 class LoggingConfig(BaseModel):
@@ -152,12 +152,11 @@ class VisionPDFConfig(BaseModel):
             raise ValueError(f"Cannot create temp directory: {v}")
         return str(path.absolute())
 
-    @validator('backends')
+    @validator('backends', always=True, pre=True)
     def validate_backends(cls, v, values):
         """Validate backend configurations."""
         if not v:
             # Add default backend configurations
-            default_backend = values.get('default_backend', BackendType.OLLAMA)
             v = {
                 'ollama': BackendConfig(
                     backend_type=BackendType.OLLAMA,
@@ -169,7 +168,7 @@ class VisionPDFConfig(BaseModel):
                 ),
                 'custom_api': BackendConfig(
                     backend_type=BackendType.CUSTOM_API,
-                    config={'url': 'https://api.example.com'}
+                    config={'base_url': 'https://api.example.com'}
                 )
             }
         return v
@@ -250,22 +249,28 @@ class VisionPDFConfig(BaseModel):
         for env_var, (section, key) in env_mappings.items():
             value = os.getenv(env_var)
             if value:
-                if section not in config_data:
-                    config_data[section] = {}
-
-                # Convert string values to appropriate types
-                if key == 'mode':
-                    config_data[section][key] = ProcessingMode(value)
-                elif key == 'default_backend':
-                    config_data[key] = BackendType(value)
-                elif key == 'backend_type':
-                    config_data[section][key] = BackendType(value)
-                elif value.lower() in ('true', 'false'):
-                    config_data[section][key] = value.lower() == 'true'
-                elif value.isdigit():
-                    config_data[section][key] = int(value)
+                if key is None:
+                    # Top-level field
+                    if section == 'default_backend':
+                         config_data[section] = BackendType(value)
+                    else:
+                         config_data[section] = value
                 else:
-                    config_data[section][key] = value
+                    # Nested field
+                    if section not in config_data:
+                        config_data[section] = {}
+
+                    # Convert string values to appropriate types
+                    if key == 'mode':
+                        config_data[section][key] = ProcessingMode(value)
+                    elif key == 'backend_type':
+                        config_data[section][key] = BackendType(value)
+                    elif value.lower() in ('true', 'false'):
+                        config_data[section][key] = value.lower() == 'true'
+                    elif value.isdigit():
+                        config_data[section][key] = int(value)
+                    else:
+                        config_data[section][key] = value
 
         return cls(**config_data)
 
@@ -323,7 +328,10 @@ class VisionPDFConfig(BaseModel):
             BackendConfig if found, None otherwise
         """
         if isinstance(backend_type, str):
-            backend_type = BackendType(backend_type)
+            try:
+                backend_type = BackendType(backend_type)
+            except ValueError:
+                return None
 
         for backend_config in self.backends.values():
             if backend_config.backend_type == backend_type:

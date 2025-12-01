@@ -63,7 +63,7 @@ class PDFAnalyzer:
                 producer=metadata.get('producer'),
                 creation_date=metadata.get('creation_date'),
                 modification_date=metadata.get('modification_date'),
-                page_count=len(fitz_doc),
+                # page_count initialized to 0, will be updated as pages are added
                 metadata=metadata
             )
 
@@ -143,7 +143,7 @@ class PDFAnalyzer:
             'creation_date': metadata.get('creationDate'),
             'modification_date': metadata.get('modDate'),
             'encrypted': fitz_doc.is_encrypted,
-            'pdf_version': fitz_doc.pdf_version(),
+            'pdf_version': metadata.get('format', 'PDF 1.4'),
             'page_count': len(fitz_doc)
         }
 

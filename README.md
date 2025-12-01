@@ -104,6 +104,7 @@ VisionPDF follows a modular architecture with separate components for:
 
 - [Installation Guide](docs/INSTALLATION.md)
 - [Configuration Reference](docs/CONFIGURATION.md)
+- [Air-Gapped Environments](docs/AIRGAPPED.md)
 - [API Documentation](https://vision-pdf.readthedocs.io/)
 - [Examples and Tutorials](docs/EXAMPLES.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
