@@ -7,6 +7,7 @@ import tempfile
 import yaml
 from pathlib import Path
 
+from pydantic import ValidationError
 from vision_pdf.config.settings import (
     VisionPDFConfig,
     BackendConfig,
@@ -140,15 +141,15 @@ class TestVisionPDFConfig:
     def test_validation_errors(self):
         """Test configuration validation errors."""
         # Invalid DPI
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             VisionPDFConfig(processing={"dpi": 50})  # Below minimum
 
         # Invalid confidence threshold
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             VisionPDFConfig(ocr={"confidence_threshold": 1.5})  # Above maximum
 
         # Invalid cache directory for file-based caching
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             VisionPDFConfig(cache={"type": "file"})  # Missing directory
 
 
@@ -181,14 +182,14 @@ class TestProcessingConfig:
         assert config.preserve_images is True
 
         # Invalid max_workers
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             ProcessingConfig(max_workers=0)  # Below minimum
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             ProcessingConfig(max_workers=20)  # Above maximum
 
         # Invalid DPI
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             ProcessingConfig(dpi=50)  # Below minimum
 
 
@@ -217,14 +218,14 @@ class TestOCRConfig:
         assert config.confidence_threshold == 0.8
 
         # Invalid confidence threshold
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             OCRConfig(confidence_threshold=1.5)  # Above maximum
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             OCRConfig(confidence_threshold=-0.1)  # Below minimum
 
         # Empty languages
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             OCRConfig(languages=[])  # Must have at least one language
 
 
@@ -253,14 +254,14 @@ class TestCacheConfig:
         assert config.max_size == 500
 
         # File-based cache without directory should fail validation
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             CacheConfig(type=CacheType.FILE)  # Missing directory
 
         # Invalid sizes
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             CacheConfig(max_size=-1)  # Negative size
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             CacheConfig(ttl=-1)  # Negative TTL
 
 
@@ -292,10 +293,10 @@ class TestLoggingConfig:
         assert config.backup_count == 3
 
         # Invalid sizes
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             LoggingConfig(max_size=-1)  # Negative size
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             LoggingConfig(backup_count=-1)  # Negative backup count
 
     def test_log_file_directory_validation(self, temp_dir):
@@ -307,5 +308,5 @@ class TestLoggingConfig:
 
         # Invalid log file with non-existing directory
         invalid_log_file = "/non/existing/path/test.log"
-        with pytest.raises(ValueError):
+        with pytest.raises(ValidationError):
             LoggingConfig(file=invalid_log_file)
