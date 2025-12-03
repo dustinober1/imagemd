@@ -143,7 +143,7 @@ class PDFAnalyzer:
             'creation_date': metadata.get('creationDate'),
             'modification_date': metadata.get('modDate'),
             'encrypted': fitz_doc.is_encrypted,
-            'pdf_version': fitz_doc.pdf_version(),
+            'pdf_version': fitz_doc.metadata.get('format', 'Unknown').replace('PDF ', ''),
             'page_count': len(fitz_doc)
         }
 

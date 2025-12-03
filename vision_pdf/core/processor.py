@@ -13,7 +13,7 @@ from typing import Optional, List, Dict, Any, Callable
 import logging
 
 from .document import Document, Page
-from ..config.settings import VisionPDFConfig, BackendType, ProcessingMode
+from ..config.settings import VisionPDFConfig, BackendType, ProcessingMode, BackendConfig
 from ..backends.base import VLMBackend
 from ..pdf.renderer import PDFRenderer
 from ..pdf.analyzer import PDFAnalyzer
@@ -59,13 +59,34 @@ class VisionPDF:
         # Initialize configuration
         if config is None:
             config = VisionPDFConfig()
-            # Apply any additional configuration
-            config.default_backend = backend_type
-            config.processing.mode = processing_mode
 
-            # Apply backend configuration if provided
-            if backend_config:
-                config.backends[backend_type.value].config.update(backend_config)
+        # Update configuration with provided parameters
+        config.default_backend = backend_type
+        config.processing.mode = processing_mode
+
+        # Debug logging for backend configuration
+        logger.debug(f"Initial backends dict: {list(config.backends.keys())}")
+        logger.debug(f"Looking for backend key: {backend_type.value}")
+
+        # Ensure backend configuration exists and is properly configured
+        backend_key = backend_type.value
+        if backend_key not in config.backends:
+            logger.debug(f"Creating new backend config for {backend_key}")
+            config.backends[backend_key] = BackendConfig(
+                backend_type=backend_type,
+                enabled=True,
+                config=backend_config or {},
+                timeout=60.0,
+                max_retries=3,
+                retry_delay=1.0
+            )
+        # Apply backend configuration if provided
+        elif backend_config:
+            logger.debug(f"Updating existing backend config for {backend_key}")
+            config.backends[backend_key].config.update(backend_config)
+
+        logger.debug(f"Final backends dict: {list(config.backends.keys())}")
+        logger.debug(f"Backend config for {backend_key}: {config.backends.get(backend_key)}")
 
         self.config = config
         self.backend_type = backend_type
@@ -141,6 +162,10 @@ class VisionPDF:
 
             # Get backend configuration
             backend_config = self.config.get_backend_config(self.backend_type)
+            logger.debug(f"Available backends: {list(self.config.backends.keys())}")
+            logger.debug(f"Looking for backend: {self.backend_type}")
+            logger.debug(f"Backend config: {backend_config}")
+
             if backend_config is None:
                 raise BackendError(f"No configuration found for backend: {self.backend_type}")
 
@@ -180,7 +205,7 @@ class VisionPDF:
             document = self.analyzer.analyze_document(pdf_path)
 
             # Process document
-            markdown_content = await self._process_document(document, progress_callback)
+            markdown_content = await self._process_document(document, pdf_path, progress_callback)
 
             logger.info(f"Successfully converted {pdf_path}")
             return markdown_content
@@ -262,6 +287,7 @@ class VisionPDF:
     async def _process_document(
         self,
         document: Document,
+        pdf_path: Path,
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> str:
         """
@@ -269,6 +295,7 @@ class VisionPDF:
 
         Args:
             document: Document object to process
+            pdf_path: Path to the original PDF file for rendering
             progress_callback: Optional progress callback
 
         Returns:
@@ -282,26 +309,27 @@ class VisionPDF:
             if progress_callback:
                 progress_callback(i + 1, len(document.pages))
 
-            page_markdown = await self._process_page(page, backend)
+            page_markdown = await self._process_page(page, backend, pdf_path)
             markdown_parts.append(page_markdown)
 
         # Combine all pages
         return "\n\n".join(markdown_parts)
 
-    async def _process_page(self, page: Page, backend: VLMBackend) -> str:
+    async def _process_page(self, page: Page, backend: VLMBackend, pdf_path: Path) -> str:
         """
         Process a single page using the VLM backend with OCR fallback.
 
         Args:
             page: Page object to process
             backend: VLM backend instance
+            pdf_path: Path to the original PDF file for rendering
 
         Returns:
             Markdown content for the page
         """
         try:
             # Create processing request
-            request = self._create_processing_request(page)
+            request = self._create_processing_request(page, pdf_path)
 
             # Process with VLM
             from ..backends.base import ProcessingRequest
@@ -331,9 +359,10 @@ class VisionPDF:
             else:
                 return self._fallback_text_extraction(page)
 
-    def _create_processing_request(self, page: Page) -> "ProcessingRequest":
+    def _create_processing_request(self, page: Page, pdf_path: Path) -> "ProcessingRequest":
         """Create a processing request for a page."""
         from ..backends.base import ProcessingRequest
+        import fitz
 
         # Create temporary image file for the page
         temp_dir = Path(tempfile.mkdtemp())
@@ -341,8 +370,18 @@ class VisionPDF:
 
         try:
             # Render page to image
-            # Note: This would require the original PDF path, which we don't have here
-            # For now, we'll create a request without image data
+            logger.debug(f"Rendering page {page.page_number} to image: {image_path}")
+
+            # Open PDF document and render page
+            with fitz.open(str(pdf_path)) as pdf_document:
+                self.renderer.render_page_to_image(pdf_document, page.page_number, image_path)
+
+            # Verify the image was created
+            if not image_path.exists():
+                raise FileNotFoundError(f"Failed to render page {page.page_number} to image: {image_path}")
+
+            logger.debug(f"Successfully rendered page {page.page_number} to image (size: {image_path.stat().st_size} bytes)")
+
             request = ProcessingRequest(
                 image_path=image_path,
                 text_content=page.raw_text,
@@ -353,8 +392,9 @@ class VisionPDF:
             return request
 
         finally:
-            # Clean up temp directory
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            # Note: Don't clean up temp directory here as the backend needs to process the image
+            # The backend will be responsible for cleanup after processing
+            pass
 
     def _get_page_prompt(self, page: Page) -> str:
         """Get appropriate prompt for page processing."""

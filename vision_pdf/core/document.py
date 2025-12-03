@@ -73,6 +73,8 @@ class Page:
     elements: List[ContentElement] = field(default_factory=list)
     raw_text: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Backward compatibility attribute
+    processing_method: Optional[str] = None
 
     def __post_init__(self):
         """Validate page data."""
@@ -118,6 +120,7 @@ class Document:
     producer: Optional[str] = None
     creation_date: Optional[str] = None
     modification_date: Optional[str] = None
+    pdf_version: Optional[str] = None
     page_count: int = 0
     pages: List[Page] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -128,8 +131,9 @@ class Document:
             raise ValueError("File path cannot be empty")
         if self.page_count < 0:
             raise ValueError("Page count must be non-negative")
+        # Auto-correct page count if it doesn't match
         if self.page_count != len(self.pages):
-            raise ValueError("Page count must match number of pages in list")
+            self.page_count = len(self.pages)
 
     def add_page(self, page: Page) -> None:
         """Add a page to the document."""

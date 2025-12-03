@@ -34,7 +34,7 @@ Advanced Usage:
     markdown = converter.convert_pdf("technical_doc.pdf")
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __author__ = "VisionPDF Team"
 __email__ = "contact@visionpdf.com"
 __description__ = "Convert PDF documents to well-formatted markdown using vision language models"

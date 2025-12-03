@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
 
-from .base import VLMBackend, BackendType, ModelInfo, ModelStatus, ProcessingRequest, ProcessingResponse
+from .base import VLMBackend, BackendType, ModelInfo, ModelStatus, ProcessingRequest, ProcessingResponse, ProcessingMode
 from ..utils.logging_config import get_logger
 from ..utils.exceptions import BackendConnectionError, ModelNotFoundError, InferenceError
 

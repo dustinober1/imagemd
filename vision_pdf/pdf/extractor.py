@@ -350,7 +350,7 @@ class PDFExtractor:
                     'page_count': len(doc),
                     'is_encrypted': doc.is_encrypted,
                     'is_pdf': True,
-                    'pdf_version': doc.pdf_version,
+                    'pdf_version': doc.metadata.get('format', 'Unknown').replace('PDF ', ''),
                     'permissions': doc.permissions,
                 })
 

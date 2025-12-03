@@ -3,7 +3,20 @@
     "allow": [
       "Bash(tree:*)",
       "WebSearch",
-      "mcp__duckduckgo__web-search"
+      "mcp__duckduckgo__web-search",
+      "Bash(python -m vision_pdf.cli.main convert:*)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(chmod:*)",
+      "Bash(python -m build:*)",
+      "Bash(vision-pdf:*)",
+      "Bash(vision-pdf-api:*)",
+      "Bash(curl:*)",
+      "Bash(ollama list:*)",
+      "Bash(ollama pull:*)",
+      "Bash(pkill:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vision-pdf"
-version = "0.1.0"
+version = "1.0.0"
 description = "Convert PDF documents to well-formatted markdown using vision language models"
 readme = "README.md"
 license = {text = "MIT"}
@@ -93,7 +93,8 @@ docs = [
 # API server dependencies
 api = [
     "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.23.0"
+    "uvicorn[standard]>=0.23.0",
+    "psutil>=5.9.0"
 ]
 
 # All optional dependencies
@@ -115,6 +116,7 @@ Changelog = "https://github.com/visionpdf/vision-pdf/blob/main/CHANGELOG.md"
 
 [project.scripts]
 vision-pdf = "vision_pdf.cli.main:main"
+vision-pdf-api = "vision_pdf.cli.main:api"
 
 [tool.setuptools]
 package-dir = {"" = "."}

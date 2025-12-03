@@ -685,6 +685,65 @@ def _load_config(config_file: str) -> VisionPDFConfig:
         raise ValueError(f"Unsupported config file format: {config_path.suffix}")
 
 
+@cli.command()
+@click.option('--host', default='0.0.0.0', help='Host to bind the API server to')
+@click.option('--port', default=8000, type=int, help='Port to bind the API server to')
+@click.option('--reload', is_flag=True, help='Enable auto-reload for development')
+@click.option('--workers', default=1, type=int, help='Number of worker processes')
+@click.option('--log-level', default='info', type=click.Choice(['debug', 'info', 'warning', 'error']))
+def api(host, port, reload, workers, log_level):
+    """
+    Start the VisionPDF REST API server.
+
+    This command starts a FastAPI server that provides HTTP endpoints for
+    PDF conversion, job management, and system monitoring.
+
+    Examples:
+        \b
+        # Start API server on default port 8000
+        vision-pdf api
+
+        # Start on custom port
+        vision-pdf api --port 8080
+
+        # Start with auto-reload for development
+        vision-pdf api --reload
+
+        # Start with multiple workers
+        vision-pdf api --workers 4
+    """
+    try:
+        # Import uvicorn for running the server
+        import uvicorn
+
+        click.echo(f"🚀 Starting VisionPDF API server on {host}:{port}")
+        click.echo(f"📖 API Documentation: http://{host}:{port}/docs")
+        click.echo(f"📊 ReDoc Documentation: http://{host}:{port}/redoc")
+        click.echo(f"🔍 Health Check: http://{host}:{port}/health")
+
+        # Configure uvicorn settings
+        config = uvicorn.Config(
+            "vision_pdf.api.main:app",
+            host=host,
+            port=port,
+            reload=reload,
+            workers=workers if not reload else 1,  # Reload doesn't work with multiple workers
+            log_level=log_level,
+            access_log=True
+        )
+
+        # Start server
+        server = uvicorn.Server(config)
+        server.run()
+
+    except ImportError:
+        click.echo("❌ API dependencies not installed. Install with: pip install vision-pdf[api]", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Failed to start API server: {e}", err=True)
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the CLI."""
     try:
